@@ -1,0 +1,4 @@
+# Linux 대상 커널의 BTF에서 생성되는 헤더와 빌드 산출물
+src/vmlinux.h
+build/
+

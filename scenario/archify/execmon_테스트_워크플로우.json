@@ -1,0 +1,215 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "execmon 실습 검증 흐름",
+    "quality_profile": "showcase"
+  },
+  "lanes": [
+    {
+      "id": "learner",
+      "label": "학습자 / 실습 VM"
+    },
+    {
+      "id": "build",
+      "label": "빌드 도구"
+    },
+    {
+      "id": "runtime",
+      "label": "커널 · eBPF runtime"
+    },
+    {
+      "id": "review",
+      "label": "검증 · 기록"
+    }
+  ],
+  "phases": [
+    {
+      "id": "prepare",
+      "label": "환경 적합성",
+      "fromCol": 0,
+      "toCol": 1
+    },
+    {
+      "id": "buildphase",
+      "label": "빌드 · 실행",
+      "fromCol": 2,
+      "toCol": 3,
+      "variant": "emphasis"
+    },
+    {
+      "id": "assess",
+      "label": "검증 · 다음 단계",
+      "fromCol": 4,
+      "toCol": 5,
+      "variant": "dashed"
+    }
+  ],
+  "mainPath": [
+    "check",
+    "generate",
+    "compile",
+    "attach",
+    "observe",
+    "cleanup",
+    "review"
+  ],
+  "nodes": [
+    {
+      "id": "check",
+      "lane": "learner",
+      "col": 0,
+      "type": "security",
+      "label": "환경 확인",
+      "sublabel": "BTF · ring buffer · tracepoint"
+    },
+    {
+      "id": "generate",
+      "lane": "build",
+      "col": 1,
+      "type": "backend",
+      "label": "타입 헤더 생성",
+      "sublabel": "vmlinux.h"
+    },
+    {
+      "id": "compile",
+      "lane": "build",
+      "col": 2,
+      "type": "backend",
+      "label": "BPF · skeleton 빌드",
+      "sublabel": "execmon.bpf.o · .skel.h"
+    },
+    {
+      "id": "attach",
+      "lane": "runtime",
+      "col": 3,
+      "type": "security",
+      "label": "load · attach",
+      "sublabel": "verifier · sys_enter_execve"
+    },
+    {
+      "id": "observe",
+      "lane": "runtime",
+      "col": 4,
+      "type": "messagebus",
+      "label": "이벤트 관찰",
+      "sublabel": "ring buffer → loader"
+    },
+    {
+      "id": "cleanup",
+      "lane": "runtime",
+      "col": 5,
+      "type": "cloud",
+      "label": "정상 종료",
+      "sublabel": "Ctrl-C · detach"
+    },
+    {
+      "id": "review",
+      "lane": "review",
+      "col": 5,
+      "type": "external",
+      "label": "결과 기록",
+      "sublabel": "기능 · 부하 · 다음 한 기능"
+    },
+    {
+      "id": "block",
+      "lane": "review",
+      "col": 1,
+      "type": "security",
+      "label": "호환성 미충족",
+      "sublabel": "환경 교체 또는 legacy 경로"
+    },
+    {
+      "id": "measure",
+      "lane": "review",
+      "col": 4,
+      "type": "database",
+      "label": "부하 관찰",
+      "sublabel": "출력량 · CPU · 드롭 한계"
+    }
+  ],
+  "edges": [
+    {
+      "from": "check",
+      "to": "generate",
+      "label": "환경 통과",
+      "role": "main"
+    },
+    {
+      "from": "generate",
+      "to": "compile",
+      "label": "BTF 타입 사용",
+      "role": "main"
+    },
+    {
+      "from": "compile",
+      "to": "attach",
+      "label": "loader 실행",
+      "role": "main"
+    },
+    {
+      "from": "attach",
+      "to": "observe",
+      "label": "execve 이벤트",
+      "role": "main"
+    },
+    {
+      "from": "observe",
+      "to": "cleanup",
+      "label": "Ctrl-C",
+      "role": "main"
+    },
+    {
+      "from": "cleanup",
+      "to": "review",
+      "label": "정리 확인",
+      "role": "main"
+    },
+    {
+      "from": "check",
+      "to": "block",
+      "label": "BTF/ring buffer 없음",
+      "role": "error",
+      "variant": "security"
+    },
+    {
+      "from": "observe",
+      "to": "measure",
+      "label": "1,000회 제한 부하",
+      "role": "branch",
+      "variant": "dashed"
+    },
+    {
+      "from": "measure",
+      "to": "review",
+      "label": "관찰값 기록",
+      "role": "return"
+    }
+  ],
+  "semanticChecks": {
+    "allowedRoots": [
+      "check"
+    ],
+    "allowedTerminals": [
+      "review",
+      "block"
+    ],
+    "requiredPaths": [
+      {
+        "from": "check",
+        "to": "review"
+      }
+    ],
+    "requiredEdges": [
+      {
+        "from": "check",
+        "to": "block"
+      },
+      {
+        "from": "observe",
+        "to": "measure"
+      }
+    ]
+  }
+}
+
