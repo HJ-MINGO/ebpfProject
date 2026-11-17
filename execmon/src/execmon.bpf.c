@@ -16,6 +16,7 @@
 #include "vmlinux.h"
 
 /* BPF 프로그램과 Java의 DTO 역할을 하는 공용 이벤트 구조체 */
+#define EXECMON_BPF 1
 #include "execmon.h"
 
 /* BPF_CORE_READ: 커널 버전별 구조체 필드 위치 차이를 로드 시 조정하는 도우미 */

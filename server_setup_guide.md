@@ -421,7 +421,7 @@ sudo ufw status numbered
 ~~~bash
 sudo apt update
 sudo apt install -y \
-  bpftrace bpftool \
+  bpftrace \
   clang llvm libbpf-dev libelf-dev zlib1g-dev \
   linux-tools-common linux-tools-$(uname -r) linux-headers-$(uname -r) \
   build-essential pkg-config git
@@ -487,16 +487,16 @@ mkdir -p ~/workspace
 cd ~/workspace
 
 # Git 원격 저장소가 준비된 경우
-# git clone <YOUR_REPOSITORY_URL> execmon
+# git clone <YOUR_REPOSITORY_URL> ebpfProject
 
 # 또는 개발 PC에서 공개키 인증을 이용해 프로젝트를 전송한 경우
-# scp -i ~/.ssh/ebpf-lab_ed25519 -r ./ebpfProject ebpf-lab@<SERVER_IP>:~/workspace/execmon
+# scp -i ~/.ssh/ebpf-lab_ed25519 -r ./ebpfProject ebpf-lab@<SERVER_IP>:~/workspace/
 
-cd ~/workspace/execmon
+cd ~/workspace/ebpfProject/execmon
 find . -maxdepth 2 -type f | sort
 ~~~
 
-src/execmon.h, src/execmon.bpf.c, src/execmon.c가 보여야 한다. src/vmlinux.h와 build/는 서버에서 생성하므로 Git에 넣지 않는다.
+`src/execmon.h`, `src/execmon.bpf.c`, `src/execmon.c`가 보여야 한다. `src/vmlinux.h`와 `build/`는 서버에서 생성하므로 Git에 넣지 않는다.
 
 ## 9. 권한 원칙
 
@@ -529,7 +529,7 @@ Codex → 제한된 MCP 도구 → MCP 내부의 전용 SSH 키 → ebpf-lab VM
 - [ ] root·비밀번호 SSH 로그인을 비활성화하고, 새 세션에서 키 로그인을 재확인했다.
 - [ ] BTF, ring buffer, bpf_get_current_task_btf, tracepoint를 확인했다.
 - [ ] bpftool, bpftrace, clang, libbpf 개발 의존성을 설치했다.
-- [ ] 소스를 ~/workspace/execmon에 배치했다.
+- [ ] 소스를 ~/workspace/ebpfProject/execmon에 배치했다.
 - [ ] 패키지 설치 전 또는 후 스냅샷을 만들었다.
 - [ ] 서버 비밀값을 채팅·문서·Git에 기록하지 않았다.
 

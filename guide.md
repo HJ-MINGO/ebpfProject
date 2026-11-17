@@ -33,7 +33,7 @@ test -r /sys/kernel/btf/vmlinux && echo 'BTF: available' || echo 'BTF: unavailab
 ```bash
 sudo apt update
 sudo apt install -y \
-  bpftrace bpftool \
+  bpftrace \
   clang llvm libbpf-dev libelf-dev zlib1g-dev \
   linux-tools-common linux-tools-$(uname -r) linux-headers-$(uname -r) \
   build-essential pkg-config git
@@ -253,7 +253,7 @@ char LICENSE[] SEC("license") = "Dual BSD/GPL";
 ## 7. BPF 객체와 skeleton 빌드
 
 ```bash
-clang -g -O2 -target bpf -D__TARGET_ARCH_x86 -Isrc \
+clang -g -O2 -target bpf -D__TARGET_ARCH_x86 -I/usr/include/$(uname -m)-linux-gnu -Isrc \
   -c src/execmon.bpf.c -o build/execmon.bpf.o
 
 bpftool gen skeleton build/execmon.bpf.o > build/execmon.skel.h

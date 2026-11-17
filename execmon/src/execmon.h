@@ -7,7 +7,17 @@
  * Transfer Object) 정의다. 한쪽에서만 필드를 바꾸면, 다른 쪽은 잘못된
  * 바이트 위치를 읽으므로 반드시 두 프로그램이 같은 파일을 include한다.
  */
+/*
+ * BPF 프로그램은 vmlinux.h를 먼저 include한다. vmlinux.h에는 현재 커널의
+ * __u32 같은 Linux 타입 정의가 이미 들어 있으므로, 여기서 linux/types.h를
+ * 다시 include하면 같은 typedef가 충돌할 수 있다.
+ *
+ * 사용자 공간 loader는 vmlinux.h를 쓰지 않으므로 Linux UAPI 타입 헤더를
+ * 계속 포함해야 한다. EXECMON_BPF는 execmon.bpf.c가 명시적으로 정의한다.
+ */
+#ifndef EXECMON_BPF
 #include <linux/types.h>
+#endif
 
 /*
  * Linux의 comm은 프로세스 이름을 위한 고정 길이 배열이다.
