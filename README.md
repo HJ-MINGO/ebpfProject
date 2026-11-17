@@ -151,13 +151,3 @@ pid=12345    ppid=12001    uid=1000   comm=id              file=/usr/bin/id
 ```bash
 sudo bpftool link show
 ```
-
-## 다음 학습 순서
-
-1. `sys_exit_execve`를 추가해 실행 성공 여부와 반환값을 기록한다.
-2. ring buffer 예약 실패 횟수를 세는 드롭 카운터 map을 추가한다.
-3. JSON Lines 출력과 문자열 escaping·길이 제한을 설계한다.
-4. `connect`, `openat`, `unlink` 이벤트를 하나씩 추가한다.
-5. 제한된 부하에서 드롭률, CPU, 메모리, 로그량을 측정한다.
-
-상세한 명령과 실패 대응은 [guide.md](guide.md), VM 준비는 [server_setup_guide.md](server_setup_guide.md), 검증 순서는 [테스트 시나리오](scenario/2026-10-25_execmon_테스트_시나리오.md)를 따른다.
