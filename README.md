@@ -1,153 +1,84 @@
-# eBPF 실행 이벤트 학습 프로젝트
+# Rust 기반 eBPF 실행 이벤트 학습 프로젝트
 
-단일 Linux 서버에서 프로세스 실행 요청을 관찰하는 작은 eBPF 학습 프로젝트다. 첫 목표는 Kubernetes 연동이나 자동 차단이 아니라, **커널 이벤트가 사용자 공간 로그가 되는 흐름**을 직접 확인하는 것이다.
+이 저장소는 단일 Linux 서버에서 프로세스 실행 요청을 관찰하는 eBPF 학습 프로젝트다. 기존 C + libbpf `execmon` 구현은 기준 구현으로 Git 이력에 보존하고, 이제부터 동일한 데이터 흐름을 **Rust 기반으로 단계적으로 마이그레이션**한다.
 
-> 상태: `execmon` 소스 초안과 실습 문서는 준비됐지만, 새 실습 VM에서의 빌드·load·attach·이벤트 출력은 아직 검증하지 않았다.
-
-## 무엇을 관찰하나
-
-`execmon`은 `execve()` 시스템 콜의 진입 시점에 발생하는 `sys_enter_execve` tracepoint를 관찰한다.
+첫 목표는 Kubernetes 연동이나 자동 차단이 아니다. 커널 이벤트가 사용자 공간 로그가 되는 아래 흐름을 Rust 코드에서도 직접 확인하는 것이 목표다.
 
 ```text
 /usr/bin/id 실행 요청
   → sys_enter_execve tracepoint
-  → execmon.bpf.c (커널의 eBPF 프로그램)
-  → ring buffer events map
-  → execmon.c (사용자 공간 loader)
-  → 터미널 로그
+  → Rust eBPF 프로그램 (커널)
+  → ring buffer map
+  → Rust 사용자 공간 loader
+  → 사람이 읽을 수 있는 로그
 ```
 
-- **tracepoint**: 커널이 관찰용으로 안정적으로 공개한 이벤트 지점이다.
-- **eBPF**: 커널이 verifier(안전성 검사기)로 검증한 뒤 제한된 형태로 실행하는 프로그램이다.
-- **ring buffer**: eBPF 프로그램이 사용자 공간으로 이벤트를 전달하는 커널 메모리 큐다.
-- **BTF(Binary Type Format)**: 커널 구조체의 타입 정보다. CO-RE가 현재 커널에 맞는 필드 위치를 찾는 데 쓴다.
-- **CO-RE(Compile Once, Run Everywhere)**: 한 번 컴파일한 eBPF 코드를 여러 커널 구조체 배치에 맞춰 로드 시 보정하는 방식이다.
+> 현재 단계: Rust 마이그레이션의 문서와 기준점을 준비하는 단계다. Rust 소스, 의존성, 빌드 설정은 아직 추가하지 않았다. 따라서 Rust 실행 결과는 아직 없다.
 
-## 현재 범위와 개인정보 원칙
+## 왜 Rust로 옮기나
 
-현재 이벤트는 PID, PPID, UID, 호출 당시 프로세스 이름(`comm`), 실행 대상 파일 경로만 수집한다.
+C + libbpf 구현은 eBPF의 기본 구조를 가장 직접적으로 보여 주지만, 사용자 공간 코드에서는 메모리 안전성과 오류 처리를 개발자가 직접 관리해야 한다. Rust 마이그레이션에서는 같은 관측 범위를 유지하면서 다음 차이를 학습한다.
 
-명령행 인자(`argv`)와 환경 변수(`envp`)는 토큰·비밀번호 등 민감한 값을 담을 수 있으므로 수집하지 않는다. 이 프로젝트는 관찰 전용이며, 프로세스 종료나 네트워크 차단 기능을 구현하지 않는다.
+| 구분 | 기존 기준 구현 | Rust 마이그레이션 목표 |
+| --- | --- | --- |
+| 커널 프로그램 | C eBPF | Rust eBPF |
+| 사용자 공간 loader | C + libbpf skeleton | Rust crate 기반 loader |
+| 이벤트 전달 | `BPF_MAP_TYPE_RINGBUF` | 같은 ring buffer 방식 유지 |
+| 관측 hook | `sys_enter_execve` tracepoint | 같은 tracepoint 유지 |
+| 수집 범위 | PID, PPID, UID, `comm`, 실행 파일 경로 | 같은 최소 필드부터 재현 |
+| 동작 성격 | 관찰 전용 | 관찰 전용 유지 |
 
-`sys_enter_execve`는 **실행 시도** 시점이다. PATH 탐색 중 실패한 시도도 보일 수 있으며, 실행 성공 여부는 아직 구분하지 않는다. 또한 `comm`은 대상 실행 파일 이름으로 바뀌기 전의 값일 수 있다.
+**eBPF**는 커널 안에서 제한적으로 실행되는 프로그램이며, verifier(안전성 검사기)가 로드 전에 모든 실행 경로를 검사한다. Rust를 사용해도 eBPF 프로그램은 verifier와 커널 helper의 제약을 그대로 받는다. Rust는 이 제약을 없애는 도구가 아니라, 사용자 공간과 공유 데이터 구조를 더 안전하게 다루는 선택지다.
+
+## 마이그레이션 원칙
+
+- 기존 `execmon/`의 C 소스는 비교와 학습을 위한 기준 구현으로 보존한다. Rust 버전이 최소 검증을 끝내기 전까지 C 버전을 삭제하거나 덮어쓰지 않는다.
+- 첫 Rust 구현은 tracepoint, ring buffer, `execve` 이벤트 하나만 다룬다. kprobe, 컨테이너 메타데이터, 자동 차단을 함께 추가하지 않는다.
+- Rust eBPF 프레임워크는 다음 단계의 도구 호환성 점검 후 확정한다. 현재 후보는 Aya이며, 아직 의존성 버전을 고정하거나 설치하지 않았다.
+- 공용 이벤트 구조체는 커널 쪽과 사용자 공간에서 바이트 배치가 같아야 한다. Rust에서는 정수 크기, 정렬, NUL 종료 문자열, `repr(C)` 같은 ABI(Application Binary Interface, 프로그램 간 메모리 약속)를 명시적으로 검증한다.
+- CO-RE(Compile Once, Run Everywhere)는 한 번 빌드한 eBPF 프로그램을 다른 커널 구조체 배치에 맞춰 로드 시 보정하는 방식이다. Rust로 옮겨도 대상 커널의 BTF(Binary Type Format, 커널 타입 정보)와 필요한 helper·hook이 실제로 존재하는지 먼저 확인한다.
+
+## 수집 범위와 보안 경계
+
+첫 Rust 버전은 PID, PPID, UID, 호출 당시 프로세스 이름(`comm`), 실행 대상 파일 경로만 수집한다.
+
+명령행 인자(`argv`)와 환경 변수(`envp`)는 토큰·비밀번호·개인정보를 포함할 수 있으므로 수집하지 않는다. 실행 파일 경로도 민감할 수 있으므로, 실제 VM 검증에서는 로그 파일 권한과 보존 기간을 별도로 확인한다. 이 프로젝트는 관찰 전용이며 프로세스 종료, 네트워크 차단, 정책 강제를 구현하지 않는다.
+
+`sys_enter_execve`는 실행 **시도** 시점이다. 실행 실패와 PATH 탐색 중의 실패한 후보도 보일 수 있다. 실행 성공 여부는 후속 단계에서 `sys_exit_execve`를 추가해 구분한다.
+
+## 마이그레이션 순서
+
+| 단계 | 작은 목표 | 완료 기준 |
+| --- | --- | --- |
+| 0. 기준점 기록 | C 구현과 기존 실습 기록을 보존하고 Rust 작업 로그를 분리한다. | 이 README와 Rust 전용 진행 로그가 있다. |
+| 1. 도구 적합성 점검 | Rust toolchain, 대상 VM의 BTF, ring buffer, tracepoint를 확인한다. | 명령과 실제 출력이 기록된다. |
+| 2. 프로젝트 뼈대 | 커널 eBPF crate, 사용자 공간 crate, 공용 이벤트 타입을 만든다. | 빌드만 성공한다. |
+| 3. 이벤트 하나 | `sys_enter_execve`에서 최소 필드를 ring buffer로 보낸다. | verifier를 통과해 load·attach한다. |
+| 4. 사용자 공간 출력 | loader가 이벤트를 읽어 안전하게 출력한다. | `/usr/bin/id` 실행이 한 줄의 로그로 보인다. |
+| 5. 종료·부하 검증 | Ctrl-C 정리, ring buffer 드롭, 로그량을 확인한다. | link 해제와 측정 결과가 기록된다. |
+
+현재는 0단계다. 다음 변경은 1단계의 Rust toolchain 및 대상 VM 적합성 점검만 다룬다.
 
 ## 저장소 구성
 
 | 경로 | 내용 |
 | --- | --- |
-| `guide.md` | 전체 학습 가이드와 개념 설명 |
-| `tool_commands.md` | 환경·도구 점검 명령 |
+| `execmon/` | 기존 C + libbpf 기준 구현. Rust 마이그레이션 중에는 비교용으로 유지한다. |
+| `guide.md` | 기존 C 기반 학습 가이드. Rust 전환과 섞지 않고 필요할 때 별도 문서로 추가한다. |
+| `tool_commands.md` | 환경과 eBPF 도구 점검 명령. Rust 관련 명령은 검증 후 추가한다. |
 | `server_setup_guide.md` | 별도 실습 VM 준비와 보안 설정 |
-| `scenario/` | VM 검증을 위한 단계별 테스트 시나리오 |
-| `execmon/src/execmon.bpf.c` | 커널에서 실행되는 eBPF 프로그램 |
-| `execmon/src/execmon.c` | BPF를 load·attach하고 이벤트를 출력하는 loader |
-| `execmon/src/execmon.h` | BPF와 loader가 공유하는 이벤트 구조체 |
-| `log/`, `error/` | 진행 사실과 오류 원문·해결 기록 |
+| `scenario/` | 기존 C 구현의 단계별 테스트 시나리오 |
+| `log/` | 날짜별 진행 기록. Rust 작업은 파일명과 내용에 Rust임을 명시한다. |
+| `error/` | 오류 원문, 원인, 해결 조치, 후속 확인 기록 |
 
-## 실행 환경
+## 실행 환경과 권한
 
-운영 서버가 아닌 별도 Linux 실습 VM을 사용한다. 권장 환경은 Ubuntu Server 24.04 LTS, 2 vCPU, 4 GiB RAM, 30 GiB SSD다.
+운영 서버가 아닌 별도 Linux 실습 VM에서 진행한다. 기존 관측 범위를 그대로 재현하려면 Linux 5.11 이상, BTF, ring buffer, `sys_enter_execve` tracepoint와 현재 task BTF helper가 필요하다. 실제 요구 사항은 Rust eBPF 프레임워크와 대상 VM을 확정한 뒤 명령으로 다시 검증한다.
 
-현재 `execmon`은 다음 기능을 사용한다.
+eBPF 프로그램을 load·attach하려면 root 또는 제한된 Linux capability가 필요할 수 있다. 학습 단계에서는 전용 VM과 전용 계정을 사용하고, 장기 실행 서비스 등록이나 운영 서버 배포는 하지 않는다.
 
-| 필요 항목 | 이유 |
-| --- | --- |
-| Linux 5.11 이상 | `bpf_get_current_task_btf()` helper로 PPID를 수집한다. |
-| BTF | `vmlinux.h` 생성과 CO-RE 구조체 접근에 필요하다. |
-| ring buffer | eBPF 이벤트를 loader로 전달한다. |
-| `sys_enter_execve` tracepoint | `execve()` 요청을 관찰하는 hook이다. |
+## 기록 규칙
 
-ring buffer 자체는 Linux 5.8부터지만, 현재 PPID 수집 방식 때문에 이 소스의 최소 기준은 Linux 5.11이다.
-
-## 시작하기
-
-아래 명령은 **실습 VM의 Ubuntu 터미널**에서 실행한다. BPF 프로그램을 실제로 load·attach하는 마지막 실행만 `sudo`가 필요하다.
-
-이 저장소 전체를 VM으로 복사하거나 clone했을 때, 표준 작업 경로는 다음과 같다. 이후의 빌드 명령은 이 디렉터리에서 실행한다.
-
-```bash
-cd ~/workspace/ebpfProject/execmon
-```
-
-`/usr/local/src`와 root의 홈은 사용하지 않는다. 소스와 build 산출물은 전용 계정 `ebpf-lab`의 홈 아래에 둔다.
-
-### 1. 도구 설치
-
-```bash
-sudo apt update
-sudo apt install -y \
-  clang llvm libbpf-dev libelf-dev zlib1g-dev \
-  linux-tools-common linux-tools-$(uname -r) linux-headers-$(uname -r) \
-  build-essential pkg-config git bpftrace
-```
-
-Ubuntu 24.04에서 `bpftool`은 독립 설치 패키지가 아니라 `linux-tools-common` 등이 제공하는 가상 패키지일 수 있다. 따라서 `apt install bpftool`은 실행하지 않고, 설치 후 명령을 확인한다.
-
-```bash
-command -v bpftool || command -v /usr/sbin/bpftool
-bpftool version
-clang --version
-```
-
-`linux-tools-$(uname -r)` 또는 `linux-headers-$(uname -r)`를 찾지 못하면, 현재 실행 중인 커널과 APT 저장소의 패키지 계열이 맞는지 먼저 확인한다.
-
-```bash
-apt-cache policy linux-tools-$(uname -r) linux-headers-$(uname -r)
-```
-
-### 2. 커널 기능 확인
-
-```bash
-uname -r
-test -r /sys/kernel/btf/vmlinux && echo 'BTF: available' || echo 'BTF: unavailable'
-sudo bpftool feature probe kernel | grep -Eqi 'map_type.*ringbuf|ringbuf' && echo 'ring buffer: available' || echo 'ring buffer: unavailable'
-sudo bpftool feature probe kernel | grep -q 'bpf_get_current_task_btf' && echo 'current task BTF helper: available' || echo 'current task BTF helper: unavailable'
-test -r /sys/kernel/tracing/events/syscalls/sys_enter_execve/format && echo 'tracepoint: available' || echo 'tracepoint: unavailable'
-```
-
-네 항목이 모두 `available`이어야 다음 단계로 진행한다. 하나라도 실패하면 `error/YYYY-MM-DD_주제.md`에 명령과 원문 출력을 기록하고, 먼저 환경 문제를 해결한다.
-
-### 3. 빌드
-
-```bash
-cd execmon
-mkdir -p build
-
-bpftool btf dump file /sys/kernel/btf/vmlinux format c > src/vmlinux.h
-clang -g -O2 -target bpf -D__TARGET_ARCH_x86 \
-  -I/usr/include/$(uname -m)-linux-gnu -Isrc \
-  -c src/execmon.bpf.c -o build/execmon.bpf.o
-bpftool gen skeleton build/execmon.bpf.o > build/execmon.skel.h
-
-cc -g -O2 -Wall -Ibuild -Isrc src/execmon.c \
-  -lbpf -lelf -lz -o build/execmon
-```
-
-ARM64 VM에서는 `-D__TARGET_ARCH_x86`을 `-D__TARGET_ARCH_arm64`로 바꾼다. 커널을 업데이트했다면 `src/vmlinux.h`를 다시 생성한다.
-
-### 4. 최소 기능 검증
-
-첫 터미널에서 실행한다.
-
-```bash
-cd execmon
-sudo ./build/execmon
-```
-
-다른 터미널에서 다음을 실행한다.
-
-```bash
-/usr/bin/id
-```
-
-첫 터미널에 아래와 비슷한 출력이 나타나면, 커널 tracepoint부터 사용자 공간 loader까지 연결된 것이다.
-
-```text
-pid=12345    ppid=12001    uid=1000   comm=id              file=/usr/bin/id
-```
-
-`Ctrl-C`로 종료한 뒤 아래 명령으로 남아 있는 BPF link가 없는지 확인한다.
-
-```bash
-sudo bpftool link show
-```
+- Rust 작업 중 확인된 사실은 `log/YYYY-MM-DD_Rust_진행_로그.md`에 남긴다.
+- 오류가 발생하면 `error/YYYY-MM-DD_Rust_주제.md`에 명령, 원문 출력, 확인된 원인과 추정을 구분해 기록한다.
+- 실제 verifier 통과, load·attach, 이벤트 출력을 확인하기 전에는 동작한다고 표현하지 않는다.
