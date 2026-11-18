@@ -1,0 +1,12 @@
+[package]
+name = "execmon-rust-ebpf"
+version = "0.1.0"
+edition.workspace = true
+
+[dependencies]
+execmon-rust-common = { path = "../execmon-rust-common" }
+aya-ebpf = { workspace = true }
+
+[[bin]]
+name = "execmon-rust"
+path = "src/main.rs"
